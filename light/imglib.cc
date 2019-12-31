@@ -649,7 +649,7 @@ LoadTextures(mbsp_t *bsp)
                 strcpy(tex->name, pair.first.c_str());
                 tex->width = width;
                 tex->height = height;
-            } else if(width != tex->width || height != tex->height) {
+            } else if (width != tex->width || height != tex->height) {
                 logprint("WARNING: %s texture size (%i x %i) doesn't match texture size (%i x %i) for texture '%s'\n", rgba_texture_names[i], width, height, tex->width, tex->height, texturename.c_str());
                 continue;
             }

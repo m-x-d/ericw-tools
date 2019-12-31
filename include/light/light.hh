@@ -319,7 +319,7 @@ public:
         minlight {strings{"light", "minlight"}, 0},
         minlight_color {strings{"minlight_color", "mincolor"}, 255.0f, 255.0f, 255.0f, vec3_transformer_t::NORMALIZE_COLOR_TO_255},
         spotlightautofalloff { "spotlightautofalloff", false }, //mxd
-        normalmaps{ "normalmaps", false }, //mxd
+        normalmaps { "normalmaps", false }, //mxd
         compilerstyle_start { "compilerstyle_start", 32 },
 
         /* dirt */

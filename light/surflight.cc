@@ -163,7 +163,7 @@ MakeSurfaceLightsThread(void *arg)
             ProcessGlowPoints(bsp, face, &points, &pointcolors, texturecolor);
 
             // Got black glow texture? WHY?
-            if(points.empty())
+            if (points.empty())
                 continue;
         } else {
             // Get texture color

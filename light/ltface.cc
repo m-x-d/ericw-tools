@@ -3048,37 +3048,37 @@ WriteLightmaps(const mbsp_t *bsp, bsp2_dface_t *face, facesup_t *facesup, const 
     //mxd. In some special cases lightmap sorting screws KMQuake 2 rendering of initially disabled lights
     // because of a racing condition in applying lightstyles right after map load...
     if (bsp->loadversion != Q2_BSPVERSION) {
-    // intermediate collection for sorting lightmaps
-    std::vector<std::pair<float, const lightmap_t *>> sortable;
-    
-    for (const lightmap_t &lightmap : *lightmaps) {
-        // skip un-saved lightmaps
-        if (lightmap.style == 255)
-            continue;
+        // intermediate collection for sorting lightmaps
+        std::vector<std::pair<float, const lightmap_t *>> sortable;
         
-        // skip lightmaps where all samples have brightness below 1
+        for (const lightmap_t &lightmap : *lightmaps) {
+            // skip un-saved lightmaps
+            if (lightmap.style == 255)
+                continue;
+            
+            // skip lightmaps where all samples have brightness below 1
             const float maxb = Lightmap_MaxBrightness(&lightmap, lightsurf);
             if (maxb < 1)
                 continue;
-        
-        const float avgb = Lightmap_AvgBrightness(&lightmap, lightsurf);
-        sortable.emplace_back(avgb, &lightmap); //mxd. https://clang.llvm.org/extra/clang-tidy/checks/modernize-use-emplace.html
-    }
-    
-    // sort in descending order of average brightness
-    std::sort(sortable.begin(), sortable.end());
-    std::reverse(sortable.begin(), sortable.end());
-    
-    for (const auto &pair : sortable) {
-        if (sorted.size() == MAXLIGHTMAPS) {
-            logprint("WARNING: Too many light styles on a face\n"
-                     "         lightmap point near (%s)\n",
-                     VecStr(lightsurf->points[0]).c_str());
-            break;
+            
+            const float avgb = Lightmap_AvgBrightness(&lightmap, lightsurf);
+            sortable.emplace_back(avgb, &lightmap); //mxd. https://clang.llvm.org/extra/clang-tidy/checks/modernize-use-emplace.html
         }
         
-        sorted.push_back(pair.second);
-    }
+        // sort in descending order of average brightness
+        std::sort(sortable.begin(), sortable.end());
+        std::reverse(sortable.begin(), sortable.end());
+        
+        for (const auto &pair : sortable) {
+            if (sorted.size() == MAXLIGHTMAPS) {
+                logprint("WARNING: Too many light styles on a face\n"
+                         "         lightmap point near (%s)\n",
+                         VecStr(lightsurf->points[0]).c_str());
+                break;
+            }
+            
+            sorted.push_back(pair.second);
+        }
     } else {
         //mxd. Just copy lightmaps to "sorted"...
         for (const lightmap_t &lightmap : *lightmaps) {
@@ -3357,10 +3357,10 @@ LightFace(const mbsp_t *bsp, bsp2_dface_t *face, facesup_t *facesup, const globa
             const auto *miptex = Face_Miptex(bsp, face);
 
             //mxd. Skip brightening face when it has a _glow texture (KMQ2 feature)
-            if(!cfg.surflightglowtextures.boolValue() || !miptex->offsets[RGBA_GLOW_OFFSET]) {
-            vec3_t color;
-            Face_LookupTextureColor(bsp, face, color);
-            LightFace_Min(bsp, face, color, texinfo->value * 2.0f, lightsurf, lightmaps); // Playing by the eye here... 2.0 == 256 / 128; 128 is the light value, at which the surface is renered fullbright, when using arghrad3
+            if (!cfg.surflightglowtextures.boolValue() || !miptex->offsets[RGBA_GLOW_OFFSET]) {
+                vec3_t color;
+                Face_LookupTextureColor(bsp, face, color);
+                LightFace_Min(bsp, face, color, texinfo->value * 2.0f, lightsurf, lightmaps); // Playing by the eye here... 2.0 == 256 / 128; 128 is the light value, at which the surface is renered fullbright, when using arghrad3
             }
         } else if (lightsurf->minlight > cfg.minlight.floatValue()) {
             LightFace_Min(bsp, face, lightsurf->minlight_color, lightsurf->minlight, lightsurf, lightmaps);
