@@ -27,11 +27,12 @@ typedef struct {
     vec3_t pos;
     qvec3f surfnormal;
     std::vector<qvec3f> points;
+    std::vector<qvec3f> pointcolors; // Glow texture pixel colors for each point, in [0..1] range
 
     // Surface light settings...
     float intensity;       // Surface light strength for each point
     float totalintensity;  // Total surface light strength
-    vec3_t color;          // Surface color
+    vec3_t color;          // Average texture color, in [0..1] range
 
     // Estimated visible AABB culling
     vec3_t mins;

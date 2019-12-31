@@ -173,12 +173,26 @@ typedef struct miptex_s {
     uint32_t offsets[MIPLEVELS];        /* four mip maps stored */
 } miptex_t;
 
-//mxd. Used to store RGBA data in mbsp->drgbatexdata
+//mxd. Used to store/access RGBA data in mbsp->drgbatexdata
+enum rgba_texture_t
+{
+    RGBA_TEXTURE_OFFSET,
+    RGBA_GLOW_OFFSET,
+    RGBA_NORMALMAP_OFFSET,
+    
+    // Collection size
+    NUM_RGBA_TEXTURES,
+};
+
 typedef struct {
     char name[32]; // Same as in Q2
     unsigned width, height;
-    unsigned offset; // Offset to RGBA texture pixels
+    unsigned offsets[NUM_RGBA_TEXTURES];
 } rgba_miptex_t;
+
+static char *rgba_texture_postfixes[NUM_RGBA_TEXTURES] { "", "_glow", "_normal" };
+static char *rgba_texture_names[NUM_RGBA_TEXTURES] { "diffuse", "glow", "normalmap" };
+//mxd end
 
 typedef struct {
     float point[3];

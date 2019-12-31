@@ -49,7 +49,7 @@ void LoadPalette(bspdata_t *bspdata);
 // Returns color components in [0, 255]
 qvec3f Palette_GetColor(const int i);
 //mxd. Returns RGBA color components in [0, 255]
-qvec4f Texture_GetColor(const rgba_miptex_t *tex, const int i);
+qvec4f Texture_GetColor(const rgba_miptex_t *tex, const int i, const int rgba_texture_offset = RGBA_TEXTURE_OFFSET);
 
 // Image loading
 qboolean LoadPCX(const char *filename, byte **pixels, byte **palette, int *width, int *height);

@@ -271,6 +271,7 @@ public:
     lockable_vec_t minlight;
     lockable_vec3_t minlight_color;
     lockable_bool_t spotlightautofalloff; //mxd
+    lockable_bool_t normalmaps; //mxd. Use _normal textures?
     lockable_vec_t compilerstyle_start; // start index for switchable light styles, default 32 (FIXME: should be int)
 
     /* dirt */
@@ -291,6 +292,7 @@ public:
     lockable_vec_t surflightscale;
     lockable_vec_t surflightbouncescale;
     lockable_vec_t surflightsubdivision;
+    lockable_bool_t surflightglowtextures;
     
     /* sunlight */
     lockable_vec_t sunlight;
@@ -317,6 +319,7 @@ public:
         minlight {strings{"light", "minlight"}, 0},
         minlight_color {strings{"minlight_color", "mincolor"}, 255.0f, 255.0f, 255.0f, vec3_transformer_t::NORMALIZE_COLOR_TO_255},
         spotlightautofalloff { "spotlightautofalloff", false }, //mxd
+        normalmaps{ "normalmaps", false }, //mxd
         compilerstyle_start { "compilerstyle_start", 32 },
 
         /* dirt */
@@ -341,6 +344,7 @@ public:
         surflightscale       { "surflightscale", 0.3f }, // Strange defaults to match arghrad3 look...
         surflightbouncescale { "surflightbouncescale", 0.1f },
         surflightsubdivision { strings { "surflightsubdivision", "choplight" }, 16.0f, 1.0f, 8192.0f }, // "choplight" - arghrad3 name
+        surflightglowtextures { "surflightglowtextures", false }, // Whether to use KMQ2's _glow textures to mask surface lights
 
         /* sun */
         sunlight        { "sunlight", 0.0f },  /* main sun */
@@ -364,14 +368,14 @@ public:
             &addminlight,
             &minlight,
             &minlight_color,
-            &spotlightautofalloff, //mxd
+            &spotlightautofalloff, &normalmaps, //mxd
             &compilerstyle_start,
             &globalDirt,
             &dirtMode, &dirtDepth, &dirtScale, &dirtGain, &dirtAngle,
             &minlightDirt,
             &phongallowed,
             &bounce, &bouncestyled, &bouncescale, &bouncecolorscale,
-            &surflightscale, &surflightbouncescale, &surflightsubdivision, //mxd
+            &surflightscale, &surflightbouncescale, &surflightsubdivision, &surflightglowtextures, //mxd
             &sunlight,
             &sunlight_color,
             &sun2,
