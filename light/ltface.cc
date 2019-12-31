@@ -31,6 +31,7 @@
 #include <cassert>
 #include <cmath>
 #include <algorithm>
+#include <functional>
 
 using namespace std;
 
@@ -1268,7 +1269,7 @@ static qboolean LightFace_SampleMipTex(rgba_miptex_t *tex, const float *projecti
     //this is because we're treating it like a cubemap. why? no idea.
     float weight[4];
     color_rgba pi[4];
-    color_rgba *data = (color_rgba*)((byte*)tex + tex->offset);
+    color_rgba *data = (color_rgba*)((byte*)tex + tex->offsets[RGBA_TEXTURE_OFFSET]);
 
     vec3_t coord;
     if (!Matrix4x4_CM_Project(point, coord, projectionmatrix) || coord[0] <= 0 || coord[0] >= 1 || coord[1] <= 0 || coord[1] >= 1) {
@@ -1417,6 +1418,50 @@ GetDirectLighting(const globalconfig_t &cfg, raystream_t *rs, const vec3_t origi
     return result;
 }
 
+/*
+ * ================
+ * GetSurfaceNormal
+ * 
+ * mxd. Gets surfnorm, applies normalmap to surfnorm if applicable
+ * ================
+ */
+static void
+GetSurfaceNormal(const mbsp_t *bsp, const lightsurf_t *lightsurf, const int surfindex, vec3_t surfnorm, const vec3_t surfpoint)
+{
+    const globalconfig_t &cfg = *lightsurf->cfg;
+
+    // Apply normalmap to surfnorm?
+    if (cfg.normalmaps.boolValue()) {
+        const color_rgba normalcolor = SampleTexture(lightsurf->face, bsp, surfpoint, RGBA_NORMALMAP_OFFSET);
+
+        // Skip when texture has no normalmap (normalcolor is 0, 0, 0) or when normalmap normal is perpendicular to the srface (normalcolor is 127, 127, 255)
+        if (!(normalcolor.r == 0 && normalcolor.g == 0 && normalcolor.b == 0) && !(normalcolor.r == 127 && normalcolor.g == 127 && normalcolor.b == 255)) {
+            // Create bump vector from texture color...
+            const qvec3f normal {
+                normalcolor.r * 0.007874f - 1.0f, // Convert from [0 .. 255] to [-1.0f .. 1.0f] range. 0.007874f == 1 / 127  
+                normalcolor.g * 0.007874f - 1.0f,
+                normalcolor.b * 0.007874f - 1.0f,
+            };
+
+            // Assemble tangent-bitanget-normal matrix...
+            const qmat3x3f tbn = { 
+                lightsurf->snormal[0], lightsurf->snormal[1], lightsurf->snormal[2],
+                lightsurf->tnormal[0], lightsurf->tnormal[1], lightsurf->tnormal[2],
+                lightsurf->normals[surfindex][0], lightsurf->normals[surfindex][1], lightsurf->normals[surfindex][2]
+            };
+
+            // Convert to world space...
+            const qvec3f qworldpos = tbn * qv::normalize(normal); //TODO: Does normal needs to be normalized?
+            glm_to_vec3_t(qvec3f(qworldpos), surfnorm);
+            VectorNormalize(surfnorm);
+
+            return;
+        }
+    }
+
+    // No normalmap. Just grab a copy of surface normal.
+    VectorCopy(lightsurf->normals[surfindex], surfnorm);
+}
 
 /*
  * ================
@@ -1455,13 +1500,15 @@ LightFace_Entity(const mbsp_t *bsp,
      */
     raystream_t *rs = lightsurf->stream;
     rs->clearPushedRays();
-    
+
     for (int i = 0; i < lightsurf->numpoints; i++) {
-        const vec_t *surfpoint = lightsurf->points[i];
-        const vec_t *surfnorm = lightsurf->normals[i];
-        
         if (lightsurf->occluded[i])
             continue;
+
+        const vec_t *surfpoint = lightsurf->points[i];
+
+        vec3_t surfnorm; //mxd. Grab a copy of surface normal, apply normalmap if applicable
+        GetSurfaceNormal(bsp, lightsurf, i, surfnorm, surfpoint);
         
         vec3_t surfpointToLightDir;
         float surfpointToLightDist;
@@ -1527,7 +1574,7 @@ LightFace_Entity(const mbsp_t *bsp,
  * =============
  */
 static void
-LightFace_Sky(const sun_t *sun, const lightsurf_t *lightsurf, lightmapdict_t *lightmaps)
+LightFace_Sky(const mbsp_t *bsp, const sun_t *sun, const lightsurf_t *lightsurf, lightmapdict_t *lightmaps)
 {
     const globalconfig_t &cfg = *lightsurf->cfg;
     const float MAX_SKY_DIST = 65536.0f;
@@ -1548,11 +1595,13 @@ LightFace_Sky(const sun_t *sun, const lightsurf_t *lightsurf, lightmapdict_t *li
     rs->clearPushedRays();
     
     for (int i = 0; i < lightsurf->numpoints; i++) {
-        const vec_t *surfpoint = lightsurf->points[i];
-        const vec_t *surfnorm = lightsurf->normals[i];
-        
         if (lightsurf->occluded[i])
             continue;
+
+        const vec_t *surfpoint = lightsurf->points[i];
+
+        vec3_t surfnorm; //mxd. Grab a copy of surface normal, apply normalmap if applicable
+        GetSurfaceNormal(bsp, lightsurf, i, surfnorm, surfpoint);
         
         float angle = DotProduct(incoming, surfnorm);
         if (lightsurf->twosided) {
@@ -1651,6 +1700,7 @@ LightFace_Min(const mbsp_t *bsp, const bsp2_dface_t *face,
         if (cfg.minlightDirt.boolValue()) {
             value *= Dirt_GetScaleFactor(cfg, lightsurf->occlusion[i], NULL, 0.0, lightsurf);
         }
+
         if (cfg.addminlight.boolValue()) {
             Light_Add(sample, value, color, vec3_origin);
         } else {
@@ -1874,9 +1924,9 @@ GetIndirectLighting (const globalconfig_t &cfg, const bouncelight_t *vpl, const 
 }
 
 // dir: vpl -> sample point direction
-//mxd. returns color in [0,255]
+//mxd. returns color in [0..255]
 static qvec3f
-GetSurfaceLighting(const globalconfig_t &cfg, const surfacelight_t *vpl, const qvec3f &dir, const float dist, const qvec3f &normal)
+GetSurfaceLighting(const globalconfig_t &cfg, const surfacelight_t *vpl, const qvec3f &dir, const float dist, const qvec3f color, const qvec3f &normal)
 {
     qvec3f result{0};
     const float dp1 = qv::dot(vpl->surfnormal, dir);
@@ -1887,7 +1937,7 @@ GetSurfaceLighting(const globalconfig_t &cfg, const surfacelight_t *vpl, const q
     if (dp2 < 0.0f) return result; // vpl behind sample face
 
     // Get light contribution
-    result = SurfaceLight_ColorAtDist(cfg, vpl->intensity, vec3_t_to_glm(vpl->color), dist);
+    result = SurfaceLight_ColorAtDist(cfg, vpl->intensity, color, dist);
     dp2 = 0.5f + dp2 * 0.5f; // Rescale a bit to brighten the faces nearly-perpendicular to the surface light plane...
     
     // Apply angle scale
@@ -2127,7 +2177,7 @@ LightFace_Bounce(const mbsp_t *bsp, const bsp2_dface_t *face, const lightsurf_t 
 }
 
 static void //mxd
-LightFace_SurfaceLight(const lightsurf_t *lightsurf, lightmapdict_t *lightmaps)
+LightFace_SurfaceLight(const mbsp_t *bsp, const lightsurf_t *lightsurf, lightmapdict_t *lightmaps)
 {
     const globalconfig_t &cfg = *lightsurf->cfg;
 
@@ -2145,7 +2195,10 @@ LightFace_SurfaceLight(const lightsurf_t *lightsurf, lightmapdict_t *lightmaps)
                     continue;
 
                 const qvec3f lightsurf_pos = vec3_t_to_glm(lightsurf->points[i]);
-                const qvec3f lightsurf_normal = vec3_t_to_glm(lightsurf->normals[i]);
+
+                vec3_t surfnorm; // Grab a copy of surface normal, apply normalmap if applicable
+                GetSurfaceNormal(bsp, lightsurf, i, surfnorm, lightsurf->points[i]);
+                const qvec3f lightsurf_normal = vec3_t_to_glm(surfnorm);
 
                 // Push 1 unit behind the surflight (fixes darkening near surflight face on neighbouring faces)
                 qvec3f pos = vpl.points[c] - vpl.surfnormal; 
@@ -2157,7 +2210,8 @@ LightFace_SurfaceLight(const lightsurf_t *lightsurf, lightmapdict_t *lightmaps)
                 else
                     dir /= dist;
 
-                const qvec3f indirect = GetSurfaceLighting(cfg, &vpl, dir, dist, lightsurf_normal);
+                const qvec3f color = vpl.pointcolors[c];
+                const qvec3f indirect = GetSurfaceLighting(cfg, &vpl, dir, dist, color, lightsurf_normal);
                 if (LightSample_Brightness(indirect) < 0.01f) // Each point contributes very little to the final result
                     continue;
 
@@ -2957,39 +3011,58 @@ static void
 WriteLightmaps(const mbsp_t *bsp, bsp2_dface_t *face, facesup_t *facesup, const lightsurf_t *lightsurf,
                const lightmapdict_t *lightmaps)
 {
-    // intermediate collection for sorting lightmaps
-    std::vector<std::pair<float, const lightmap_t *>> sortable;
-    
-    for (const lightmap_t &lightmap : *lightmaps) {
-        // skip un-saved lightmaps
-        if (lightmap.style == 255)
-            continue;
-        
-        // skip lightmaps where all samples have brightness below 1
-        if (bsp->loadversion != Q2_BSPVERSION) { // HACK: don't do this on Q2. seems if all styles are 0xff, the face is drawn fullbright instead of black (Q1)
+    std::vector<const lightmap_t *> sorted;
+
+    //mxd. In some special cases lightmap sorting screws KMQuake 2 rendering of initially disabled lights
+    // because of a racing condition in applying lightstyles right after map load...
+    if (bsp->loadversion != Q2_BSPVERSION) {
+        // intermediate collection for sorting lightmaps
+        std::vector<std::pair<float, const lightmap_t *>> sortable;
+
+        for (const lightmap_t &lightmap : *lightmaps) {
+            // skip un-saved lightmaps
+            if (lightmap.style == 255)
+                continue;
+
+            // skip lightmaps where all samples have brightness below 1
             const float maxb = Lightmap_MaxBrightness(&lightmap, lightsurf);
             if (maxb < 1)
                 continue;
+
+            const float avgb = Lightmap_AvgBrightness(&lightmap, lightsurf);
+            sortable.emplace_back(avgb, &lightmap); //mxd. https://clang.llvm.org/extra/clang-tidy/checks/modernize-use-emplace.html
         }
-        
-        const float avgb = Lightmap_AvgBrightness(&lightmap, lightsurf);
-        sortable.emplace_back(avgb, &lightmap); //mxd. https://clang.llvm.org/extra/clang-tidy/checks/modernize-use-emplace.html
-    }
-    
-    // sort in descending order of average brightness
-    std::sort(sortable.begin(), sortable.end());
-    std::reverse(sortable.begin(), sortable.end());
-    
-    std::vector<const lightmap_t *> sorted;
-    for (const auto &pair : sortable) {
-        if (sorted.size() == MAXLIGHTMAPS) {
-            logprint("WARNING: Too many light styles on a face\n"
-                     "         lightmap point near (%s)\n",
-                     VecStr(lightsurf->points[0]));
-            break;
+
+        // sort in descending order of average brightness
+        std::sort(sortable.begin(), sortable.end());
+        std::reverse(sortable.begin(), sortable.end());
+
+        for (const auto &pair : sortable) {
+            if (sorted.size() == MAXLIGHTMAPS) {
+                logprint("WARNING: Too many light styles on a face\n"
+                    "         lightmap point near (%s)\n",
+                    VecStr(lightsurf->points[0]));
+                break;
+            }
+
+            sorted.push_back(pair.second);
         }
-        
-        sorted.push_back(pair.second);
+    } else {
+        //mxd. Just copy lightmaps to "sorted"...
+        for (const lightmap_t &lightmap : *lightmaps) {
+            // skip un-saved lightmaps
+            if (lightmap.style == 255)
+                continue;
+
+            if (sorted.size() == MAXLIGHTMAPS) {
+                logprint("WARNING: Too many light styles on a face\n"
+                    "         lightmap point near (%s)\n",
+                    VecStr(lightsurf->points[0]));
+                break;
+            }
+
+            sorted.push_back(&lightmap);
+        }
     }
     
     /* final number of lightmaps */
@@ -3230,12 +3303,12 @@ LightFace(const mbsp_t *bsp, bsp2_dface_t *face, facesup_t *facesup, const globa
                 if (entity.light.floatValue() > 0)
                     LightFace_Entity(bsp, &entity, lightsurf, lightmaps);
             }
-            for ( const sun_t &sun : GetSuns() )
+            for (const sun_t &sun : GetSuns())
                 if (sun.sunlight > 0)
-                    LightFace_Sky (&sun, lightsurf, lightmaps);
+                    LightFace_Sky(bsp, &sun, lightsurf, lightmaps);
 
             //mxd. Add surface lights...
-            LightFace_SurfaceLight(lightsurf, lightmaps);
+            LightFace_SurfaceLight(bsp, lightsurf, lightmaps);
 
             /* add indirect lighting */
             LightFace_Bounce(bsp, face, lightsurf, lightmaps);
@@ -3244,9 +3317,14 @@ LightFace(const mbsp_t *bsp, bsp2_dface_t *face, facesup_t *facesup, const globa
         /* minlight - Use Q2 surface light, or the greater of global or model minlight. */
         const gtexinfo_t *texinfo = Face_Texinfo(bsp, face); //mxd. Surface lights...
         if (texinfo != nullptr && texinfo->value > 0 && texinfo->flags & Q2_SURF_LIGHT) {
-            vec3_t color;
-            Face_LookupTextureColor(bsp, face, color);
-            LightFace_Min(bsp, face, color, texinfo->value * 2.0f, lightsurf, lightmaps); // Playing by the eye here... 2.0 == 256 / 128; 128 is the light value, at which the surface is renered fullbright, when using arghrad3
+            const auto *miptex = Face_Miptex(bsp, face);
+
+            //mxd. Skip brightening face when it has a _glow texture (KMQ2 feature)
+            if(!cfg.surflightglowtextures.boolValue() || !miptex->offsets[RGBA_GLOW_OFFSET]) {
+                vec3_t color;
+                Face_LookupTextureColor(bsp, face, color);
+                LightFace_Min(bsp, face, color, texinfo->value * 2.0f, lightsurf, lightmaps); // Playing by the eye here... 2.0 == 256 / 128; 128 is the light value, at which the surface is renered fullbright, when using arghrad3
+            }
         } else if (lightsurf->minlight > cfg.minlight.floatValue()) {
             LightFace_Min(bsp, face, lightsurf->minlight_color, lightsurf->minlight, lightsurf, lightmaps);
         } else {
@@ -3268,7 +3346,7 @@ LightFace(const mbsp_t *bsp, bsp2_dface_t *face, facesup_t *facesup, const globa
             }
             for (const sun_t &sun : GetSuns())
                 if (sun.sunlight < 0)
-                    LightFace_Sky (&sun, lightsurf, lightmaps);
+                    LightFace_Sky(bsp, &sun, lightsurf, lightmaps);
         }
     }
     

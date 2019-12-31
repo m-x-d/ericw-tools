@@ -285,43 +285,47 @@ BSP_MakeTnodes(const mbsp_t *bsp)
  * ============================================================================
  */
 
-static uint32_t fix_coord(vec_t in, uint32_t width)
+ /**
+  * Given a float texture coordinate, returns a pixel index to sample in [0, width-1].
+  * This assumes the texture repeats and nearest filtering
+  */
+static uint32_t clamp_texcoord(vec_t in, uint32_t width)
 {
-    if (in > 0)
+    if (in >= 0.0f)
     {
         return (uint32_t)in % width;
     }
     else
     {
-        vec_t in_abs = fabs(in);
+        vec_t in_abs = ceil(fabs(in));
         uint32_t in_abs_mod = (uint32_t)in_abs % width;
-        return width - in_abs_mod;
+        return (width - in_abs_mod) % width;
     }
 }
 
 color_rgba //mxd. int -> color_rgba
-SampleTexture(const bsp2_dface_t *face, const mbsp_t *bsp, const vec3_t point)
+SampleTexture(const bsp2_dface_t *face, const mbsp_t *bsp, const vec3_t point, const int rgba_texture_type)
 {
-    color_rgba sample{};
+    color_rgba sample{0, 0, 0, 0};
     if (!bsp->rgbatexdatasize)
         return sample;
     
     const auto *miptex = Face_Miptex(bsp, face);
     
-    if (miptex == nullptr)
+    if (miptex == nullptr || miptex->offsets[rgba_texture_type] == 0)
         return sample;
-    
+
     const gtexinfo_t *tex = &bsp->texinfo[face->texinfo];
 
     vec_t texcoord[2];
     WorldToTexCoord(point, tex, texcoord);
 
-    const int x = fix_coord(texcoord[0], miptex->width);
-    const int y = fix_coord(texcoord[1], miptex->height);
-    assert (x >= 0);
-    assert (y >= 0);
+    const int x = clamp_texcoord(texcoord[0], miptex->width);
+    const int y = clamp_texcoord(texcoord[1], miptex->height);
+    Q_assert(x >= 0 && x < miptex->width); //mxd. Must be within texture coords
+    Q_assert(y >= 0 && y < miptex->height);
     
-    color_rgba *data = (color_rgba*)((byte*)miptex + miptex->offset);
+    color_rgba *data = (color_rgba*)((byte*)miptex + miptex->offsets[rgba_texture_type]);
     sample = data[(miptex->width * y) + x];
 
     return sample;

@@ -64,6 +64,41 @@ SaveWindingCenterFn(winding_t *w, void *userinfo)
     args->points->push_back(vec3_t_to_glm(center));
 }
 
+static void
+ProcessGlowPoints(const mbsp_t *bsp, const bsp2_dface_t *face, vector<qvec3f> *points, vector<qvec3f> *pointcolors, vec3_t texturecolor)
+{
+    vector<qvec3f> litpoints;
+    qvec3f totalcolor{};
+    
+    // Discard points, which correspond to nearly-black pixels on glow texture, calculate colors for the ones, which aren't
+    for (const qvec3f qp : *points) {
+        // Get glow color at this point...
+        vec3_t point;
+        glm_to_vec3_t(qp, point);
+        const color_rgba glowcolor = SampleTexture(face, bsp, point, RGBA_GLOW_OFFSET); // TODO: retrieving the same texture for each point is a bit wasteful
+
+        // Skip when glow texture pixel is nearly black
+        if ((glowcolor.r + glowcolor.g + glowcolor.b) / 3 < 25)
+            continue;
+
+        // Store point color...
+        qvec3f pc = { (float)glowcolor.r, (float)glowcolor.g, (float)glowcolor.b };
+        pc /= 255.0f; // Convert to [0 .. 1] range
+        pointcolors->push_back(pc);
+        totalcolor += pc;
+
+        // This point stays
+        litpoints.push_back(qp);
+    }
+
+    // Calculate average texture color from pointcolors
+    totalcolor /= litpoints.size();
+    glm_to_vec3_t(totalcolor, texturecolor);
+
+    // Store processed points
+    *points = litpoints;
+}
+
 static void *
 MakeSurfaceLightsThread(void *arg)
 {
@@ -109,39 +144,65 @@ MakeSurfaceLightsThread(void *arg)
         WindingCenter(winding, facemidpoint);
         VectorMA(facemidpoint, 1, facenormal, facemidpoint); // Lift 1 unit
 
+        // Check glow texture...
+        const auto *mt = Face_Miptex(bsp, face);
+        const bool haveglowtexture = (cfg.surflightglowtextures.boolValue() && mt->offsets[RGBA_GLOW_OFFSET]);
+        const float subdiv = (haveglowtexture ? 1.0f : cfg.surflightsubdivision.floatValue());
+
         // Dice winding...
         vector<qvec3f> points;
+        vector<qvec3f> pointcolors;
         save_winding_points_args_t args{};
         args.points = &points;
-
-        DiceWinding(winding, cfg.surflightsubdivision.floatValue(), SaveWindingCenterFn, &args);
+        DiceWinding(winding, subdiv, SaveWindingCenterFn, &args);
         winding = nullptr; // DiceWinding frees winding
+
+        vec3_t texturecolor;
+        if (haveglowtexture) {
+            // Process glow texture, get average texture color from glowing area
+            ProcessGlowPoints(bsp, face, &points, &pointcolors, texturecolor);
+
+            // Got black glow texture? WHY?
+            if(points.empty())
+                continue;
+        } else {
+            // Get texture color
+            Face_LookupTextureColor(bsp, face, texturecolor);
+
+            // Convert to [0..1] range...
+            VectorScale(texturecolor, 1.0f / 255.0f, texturecolor); 
+        }
+
         total_surflight_points += points.size();
 
-        // Get texture color
-        vec3_t texturecolor;
-        Face_LookupTextureColor(bsp, face, texturecolor);
-
         // Calculate emit color and intensity...
-        VectorScale(texturecolor, 1.0f / 255.0f, texturecolor); // Convert to 0..1 range...
-        VectorScale(texturecolor, info->value, texturecolor);	// Scale by light value
+        VectorScale(texturecolor, info->value, texturecolor); // Scale by light value
 
         // Calculate intensity...
         float intensity = 0.0f;
         for (float c : texturecolor)
-            if (c > intensity) intensity = c;
+            intensity = max(c, intensity);
         if (intensity == 0.0f) continue;
 
         // Normalize color...
         if (intensity > 1.0f) VectorScale(texturecolor, 1.0f / intensity, texturecolor);
 
+        // Copy texture color to all points?
+        if (!haveglowtexture) {
+            for (unsigned c = 0; c < points.size(); c++)
+                pointcolors.push_back(vec3_t_to_glm(texturecolor));
+        }
+
         // Sanity checks...
         Q_assert(!points.empty());
+        Q_assert(!pointcolors.empty());
+        Q_assert(points.size() == pointcolors.size());
 
         // Add surfacelight...
         surfacelight_t l;
         l.surfnormal = vec3_t_to_glm(facenormal);
         l.points = points;
+        l.pointcolors = pointcolors;
         VectorCopy(facemidpoint, l.pos);
 
         // Store surfacelight settings...

@@ -137,7 +137,11 @@ static inline void Q_assert_(bool success, const char *expr, const char *file, i
 {
     if (!success) {
         logprint("%s:%d: Q_assert(%s) failed.\n", file, line, expr);
+#if NDEBUG
         exit(1);
+#else
+        throw; //mxd. I'd rather have a call stack in VS than "assert failed" message in the console when debugging. Now hit me with a stick... 
+#endif
     }
 }
 

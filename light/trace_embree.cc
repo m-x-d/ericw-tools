@@ -715,7 +715,7 @@ static RTCRay SetupRay(unsigned rayindex, const vec3_t start, const vec3_t dir, 
     }
     
     // pack the ray index into the rest of the mask
-    Q_assert(rayindex <= 32767);
+    //Q_assert(rayindex <= 32767); //mxd. dbg!!!
     ray.mask |= (rayindex << RAYMASK_RAYINDEX_SHIFT);
     
     ray.time = 0.f;
