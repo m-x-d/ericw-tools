@@ -3089,7 +3089,7 @@ WriteLightmaps(const mbsp_t *bsp, bsp2_dface_t *face, facesup_t *facesup, const 
             if (sorted.size() == MAXLIGHTMAPS) {
                 logprint("WARNING: Too many light styles on a face\n"
                     "         lightmap point near (%s)\n",
-                    VecStr(lightsurf->points[0]));
+                    VecStr(lightsurf->points[0]).c_str());
                 break;
             }
 

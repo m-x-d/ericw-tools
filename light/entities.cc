@@ -327,17 +327,17 @@ CheckEntityFields(const globalconfig_t &cfg, light_t *entity)
     if (entity->light.floatValue() == 0.0f)
         entity->light.setFloatValue(DEFAULTLIGHTLEVEL);
 
-    if (entity->atten.floatValue() <= 0.0)
-        entity->atten.setFloatValue(1.0);
-    if (entity->anglescale.floatValue() < 0 || entity->anglescale.floatValue() > 1.0)
+    if (entity->atten.floatValue() <= 0.0f)
+        entity->atten.setFloatValue(1.0f);
+    if (entity->anglescale.floatValue() < 0 || entity->anglescale.floatValue() > 1.0f)
         entity->anglescale.setFloatValue(cfg.global_anglescale.floatValue());
 
     //mxd. No negative falloffs pls.
-    if(entity->falloff.floatValue() < 0.0f)
+    if (entity->falloff.floatValue() < 0.0f)
         entity->falloff.setFloatValue(0.0f);
 
     //mxd. Warn about unsupported _falloff / delay combos...
-    if(entity->falloff.floatValue() > 0.0f && entity->getFormula() != LF_LINEAR) {
+    if (entity->falloff.floatValue() > 0.0f && entity->getFormula() != LF_LINEAR) {
         logprint("WARNING: _falloff is currently only supported on linear (delay 0) lights\n"
             "   %s at (%s)\n", entity->classname(), VecStr(*entity->origin.vec3Value()).c_str());
         entity->falloff.setFloatValue(0.0f);
@@ -562,7 +562,6 @@ SetupSkyDome(const globalconfig_t &cfg, float upperLight, const vec3_t upperColo
         /* setup */
         elevationSteps = iterations - 1;
         angleSteps = elevationSteps * 4;
-        angle = 0.0f;
         elevationStep = DEG2RAD( 90.0f / (elevationSteps + 1) );  /* skip elevation 0 */
         angleStep = DEG2RAD( 360.0f / angleSteps );
 
@@ -573,7 +572,6 @@ SetupSkyDome(const globalconfig_t &cfg, float upperLight, const vec3_t upperColo
         const float sunlight3value = lowerLight / numSuns;
 
         /* iterate elevation */
-        elevation = elevationStep * 0.5f;
         angle = 0.0f;
         for ( i = 0, elevation = elevationStep * 0.5f; i < elevationSteps; i++ )
         {

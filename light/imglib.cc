@@ -510,6 +510,7 @@ WriteRGBATextureData(mbsp_t *bsp, const std::vector<rgba_miptex_t*> &tex_mips, c
     byte *texdatastart = static_cast<byte*>(malloc(totalsize));
     byte *texdata = texdatastart;
     memcpy(texdata, miplmp, headersize);
+    free(miplmp);
     texdata += headersize;
 
     for (unsigned int i = 0; i < tex_mips.size(); i++) {
